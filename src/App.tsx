@@ -40,6 +40,23 @@ export default function App() {
     loadTasks()
   }, [source])
 
+  useEffect(() => {
+    if (!selectedTask) return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/task/${source}/${selectedTask}`)
+        if (!res.ok) return
+        const data = await res.json()
+        setConversation(data)
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [selectedTask, source])
+
   async function loadTasks() {
     setLoading(true)
     setError(null)
