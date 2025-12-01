@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TaskList from './components/TaskList'
 import ConversationView from './components/ConversationView'
 
@@ -40,6 +40,8 @@ export default function App() {
   const [conversation, setConversation] = useState<Message[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadTasks()
@@ -129,6 +131,43 @@ export default function App() {
     }
   }
 
+  function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setLoading(true)
+    setError(null)
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string
+        const data = JSON.parse(content)
+        
+        if (Array.isArray(data)) {
+          setConversation(data)
+          setSelectedTask(null)
+          setUploadedFileName(file.name)
+        } else {
+          setError('Invalid file format. Expected an array of messages.')
+        }
+      } catch {
+        setError('Failed to parse JSON file.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    reader.onerror = () => {
+      setError('Failed to read file.')
+      setLoading(false)
+    }
+    reader.readAsText(file)
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-900">
       <header className="bg-slate-800 shadow-lg border-b border-slate-700">
@@ -149,6 +188,19 @@ export default function App() {
                 <option value="nightly">Nightly</option>
                 <option value="production">Production</option>
               </select>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-sm text-slate-100 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              >
+                Upload File
+              </button>
             </div>
           </div>
         </div>
@@ -177,10 +229,11 @@ export default function App() {
             {conversation ? (
               <ConversationView
                 messages={conversation}
-                taskId={selectedTask!}
+                taskId={selectedTask ?? uploadedFileName ?? 'uploaded'}
                 onClose={() => {
                   setConversation(null)
                   setSelectedTask(null)
+                  setUploadedFileName(null)
                 }}
               />
             ) : (
