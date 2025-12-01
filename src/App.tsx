@@ -46,6 +46,38 @@ export default function App() {
   }, [source])
 
   useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/tasks/${source}`)
+        if (!res.ok) return
+        const data: Task[] = await res.json()
+        
+        setTasks(prevTasks => {
+          const existingIds = new Set(prevTasks.map(t => t.id))
+          const newTasks = data.filter(t => !existingIds.has(t.id))
+          
+          if (newTasks.length === 0) {
+            const updatedTasks = prevTasks.map(prevTask => {
+              const updated = data.find(t => t.id === prevTask.id)
+              return updated ? { ...prevTask, timestamp: updated.timestamp } : prevTask
+            })
+            updatedTasks.sort((a, b) => b.timestamp - a.timestamp)
+            return updatedTasks
+          }
+          
+          const mergedTasks = [...newTasks, ...prevTasks]
+          mergedTasks.sort((a, b) => b.timestamp - a.timestamp)
+          return mergedTasks
+        })
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [source])
+
+  useEffect(() => {
     if (!selectedTask) return
 
     const interval = setInterval(async () => {

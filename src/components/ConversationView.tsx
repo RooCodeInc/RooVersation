@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import MessageBlock from './MessageBlock'
 
 interface ContentBlock {
@@ -27,10 +27,35 @@ interface ConversationViewProps {
 
 export default function ConversationView({ messages, taskId, onClose }: ConversationViewProps) {
   const [expandAll, setExpandAll] = useState(true)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   function formatTime(timestamp: number) {
     return new Date(timestamp).toLocaleString()
   }
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      })
+    }
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+      const atBottom = scrollHeight - scrollTop - clientHeight < 50
+      setIsAtBottom(atBottom)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAtBottom) {
+      scrollToBottom()
+    }
+  }, [messages, isAtBottom, scrollToBottom])
 
   return (
     <div className="bg-slate-800 rounded-lg shadow-lg overflow-hidden border border-slate-700">
@@ -55,7 +80,12 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
         </div>
       </div>
       
-      <div className="max-h-[calc(100vh-200px)] overflow-y-auto p-4 space-y-4">
+      <div className="relative">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="max-h-[calc(100vh-200px)] overflow-y-auto p-4 space-y-4"
+        >
         {messages.map((message, index) => (
           <div
             key={index}
@@ -86,7 +116,21 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
               ))}
             </div>
           </div>
-        ))}
+          ))}
+        </div>
+        
+        {!isAtBottom && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-4 right-6 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg shadow-lg transition-all duration-200 flex items-center gap-2 border border-slate-600"
+            title="Scroll to bottom"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm">Scroll down</span>
+          </button>
+        )}
       </div>
     </div>
   )
