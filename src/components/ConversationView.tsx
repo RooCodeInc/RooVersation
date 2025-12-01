@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import MessageBlock from './MessageBlock'
 
 interface ContentBlock {
@@ -29,6 +29,36 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
   const [expandAll, setExpandAll] = useState(true)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const toolUsesMissingResults = useMemo(() => {
+    const toolResultIds = new Set<string>()
+    const toolUsePositions = new Map<string, { messageIndex: number; blockIndex: number }>()
+    
+    messages.forEach((message, messageIndex) => {
+      message.content.forEach((block, blockIndex) => {
+        if (block.type === 'tool_result' && block.tool_use_id) {
+          toolResultIds.add(block.tool_use_id)
+        }
+        if (block.type === 'tool_use' && block.id) {
+          toolUsePositions.set(block.id, { messageIndex, blockIndex })
+        }
+      })
+    })
+    
+    const missingResults = new Set<string>()
+    const lastMessageIndex = messages.length - 1
+    
+    toolUsePositions.forEach((position, toolUseId) => {
+      if (!toolResultIds.has(toolUseId)) {
+        const hasMessageAfter = position.messageIndex < lastMessageIndex
+        if (hasMessageAfter) {
+          missingResults.add(toolUseId)
+        }
+      }
+    })
+    
+    return missingResults
+  }, [messages])
 
   function formatTime(timestamp: number) {
     return new Date(timestamp).toLocaleString()
@@ -112,6 +142,7 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
                   key={blockIndex}
                   block={block}
                   expanded={expandAll}
+                  hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
                 />
               ))}
             </div>
