@@ -12,6 +12,12 @@ interface Message {
   role: 'user' | 'assistant'
   content: ContentBlock[]
   ts: number
+  isSummary?: boolean
+  condenseId?: string
+  condenseParent?: string
+  isTruncationMarker?: boolean
+  truncationId?: string
+  truncationParent?: string
 }
 
 interface ContentBlock {
