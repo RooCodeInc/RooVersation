@@ -1,4 +1,4 @@
-# Convo Viewer
+# RooVersation
 
 View Roo Code conversation history from your local tasks.
 
