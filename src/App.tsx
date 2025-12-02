@@ -156,7 +156,7 @@ export default function App() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    setLoading(true)
+    setLoadingConversation(true)
     setError(null)
 
     const reader = new FileReader()
@@ -175,12 +175,12 @@ export default function App() {
       } catch {
         setError('Failed to parse JSON file.')
       } finally {
-        setLoading(false)
+        setLoadingConversation(false)
       }
     }
     reader.onerror = () => {
       setError('Failed to read file.')
-      setLoading(false)
+      setLoadingConversation(false)
     }
     reader.readAsText(file)
     
@@ -194,7 +194,7 @@ export default function App() {
       <header className="bg-slate-800 shadow-lg border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-slate-100">Convo Viewer</h1>
+            <h1 className="text-2xl font-bold text-slate-100">RooVersation</h1>
             <div className="flex items-center gap-4">
               <label className="text-sm text-slate-400">Source:</label>
               <select
