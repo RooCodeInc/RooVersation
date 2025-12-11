@@ -46,6 +46,7 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [filterCondensed, setFilterCondensed] = useState(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isInitialLoad = useRef(true)
 
   // Track tool uses without results (from main)
   const toolUsesMissingResults = useMemo(() => {
@@ -156,11 +157,11 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     }
   }, [messages])
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({
         top: scrollContainerRef.current.scrollHeight,
-        behavior: 'smooth'
+        behavior
       })
     }
   }, [])
@@ -175,7 +176,12 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
 
   useEffect(() => {
     if (isAtBottom) {
-      scrollToBottom()
+      if (isInitialLoad.current) {
+        scrollToBottom('instant')
+        isInitialLoad.current = false
+      } else {
+        scrollToBottom('smooth')
+      }
     }
   }, [messages, isAtBottom, scrollToBottom])
 
@@ -303,7 +309,7 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
         
         {!isAtBottom && (
           <button
-            onClick={scrollToBottom}
+            onClick={() => scrollToBottom()}
             className="absolute bottom-4 right-6 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg shadow-lg transition-all duration-200 flex items-center gap-2 border border-slate-600"
             title="Scroll to bottom"
           >
