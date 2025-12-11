@@ -126,6 +126,36 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     }
   }, [messages])
 
+  const copyConversationStructure = useCallback(async () => {
+    try {
+      const structureOnly = messages.map((message) => {
+        const contentBlocks = normalizeContent(message.content).map((block) => ({
+          type: block.type,
+          ...(block.id && { id: block.id }),
+          ...(block.name && { name: block.name }),
+          ...(block.tool_use_id && { tool_use_id: block.tool_use_id }),
+          ...(block.is_error !== undefined && { is_error: block.is_error }),
+        }))
+
+        return {
+          role: message.role,
+          content: contentBlocks,
+          ts: message.ts,
+          ...(message.isSummary !== undefined && { isSummary: message.isSummary }),
+          ...(message.condenseId && { condenseId: message.condenseId }),
+          ...(message.condenseParent && { condenseParent: message.condenseParent }),
+          ...(message.isTruncationMarker !== undefined && { isTruncationMarker: message.isTruncationMarker }),
+          ...(message.truncationId && { truncationId: message.truncationId }),
+          ...(message.truncationParent && { truncationParent: message.truncationParent }),
+        }
+      })
+
+      await navigator.clipboard.writeText(JSON.stringify(structureOnly, null, 2))
+    } catch (err) {
+      console.error('Failed to copy conversation structure:', err)
+    }
+  }, [messages])
+
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({
@@ -190,6 +220,13 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
             title="Copy conversation JSON"
           >
             Copy
+          </button>
+          <button
+            onClick={copyConversationStructure}
+            className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
+            title="Copy structure only (no message content)"
+          >
+            Copy Structure
           </button>
           <button
             onClick={onClose}
