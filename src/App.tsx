@@ -1,45 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import TaskList from './components/TaskList'
 import ConversationView from './components/ConversationView'
-
-interface Task {
-  id: string
-  timestamp: number
-  firstMessage: string
-}
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: ContentBlock[]
-  ts: number
-  isSummary?: boolean
-  condenseId?: string
-  condenseParent?: string
-  isTruncationMarker?: boolean
-  truncationId?: string
-  truncationParent?: string
-}
-
-interface ContentBlock {
-  type: string
-  text?: string
-  id?: string
-  name?: string
-  input?: Record<string, unknown>
-  tool_use_id?: string
-  content?: string
-  is_error?: boolean
-  summary?: string[]
-}
+import ConversationBuilder from './components/ConversationBuilder'
+import type { Task, Message } from './types'
 
 type Source = 'nightly' | 'production'
+type AppMode = 'viewer' | 'builder'
 
 function getStoredSource(): Source {
   const stored = localStorage.getItem('convo-viewer-source')
   return stored === 'production' ? 'production' : 'nightly'
 }
 
+function getStoredMode(): AppMode {
+  const stored = localStorage.getItem('convo-viewer-mode')
+  return stored === 'builder' ? 'builder' : 'viewer'
+}
+
 export default function App() {
+  const [mode, setMode] = useState<AppMode>(getStoredMode)
   const [source, setSource] = useState<Source>(getStoredSource)
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
@@ -48,13 +27,23 @@ export default function App() {
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+  const [previewConversation, setPreviewConversation] = useState<Message[] | null>(null)
+  const [builderMessages, setBuilderMessages] = useState<(Message & { _id: string })[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    loadTasks()
-  }, [source])
+    localStorage.setItem('convo-viewer-mode', mode)
+  }, [mode])
 
   useEffect(() => {
+    if (mode === 'viewer') {
+      loadTasks()
+    }
+  }, [source, mode])
+
+  useEffect(() => {
+    if (mode !== 'viewer') return
+
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/tasks/${source}`)
@@ -84,10 +73,10 @@ export default function App() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [source])
+  }, [source, mode])
 
   useEffect(() => {
-    if (!selectedTask) return
+    if (!selectedTask || mode !== 'viewer') return
 
     const interval = setInterval(async () => {
       try {
@@ -101,7 +90,7 @@ export default function App() {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [selectedTask, source])
+  }, [selectedTask, source, mode])
 
   async function loadTasks() {
     setLoadingTasks(true)
@@ -114,7 +103,7 @@ export default function App() {
       if (!res.ok) throw new Error('Failed to load tasks')
       const data = await res.json()
       setTasks(data)
-    } catch (err) {
+    } catch {
       setError('Failed to load tasks. Make sure the server is running.')
     } finally {
       setLoadingTasks(false)
@@ -122,13 +111,12 @@ export default function App() {
   }
 
   async function loadConversation(taskId: string) {
-    // Don't allow clicking if already loading
     if (loadingConversation) return
     
     setLoadingConversation(true)
     setError(null)
-    setSelectedTask(taskId) // Set immediately to show selection
-    setConversation(null) // Clear old conversation
+    setSelectedTask(taskId)
+    setConversation(null)
     
     try {
       const res = await fetch(`/api/task/${source}/${taskId}`)
@@ -142,9 +130,8 @@ export default function App() {
         throw new Error('Failed to load conversation')
       }
       const data = await res.json()
-      // Only set if this is still the selected task (prevents race conditions)
       setConversation(data)
-    } catch (err) {
+    } catch {
       setError('Failed to load conversation')
       setSelectedTask(null)
     } finally {
@@ -189,39 +176,85 @@ export default function App() {
     }
   }
 
+  function handlePreviewFromBuilder(messages: Message[]) {
+    setPreviewConversation(messages)
+  }
+
+  function handleModeChange(newMode: AppMode) {
+    setMode(newMode)
+    if (newMode === 'builder') {
+      setSelectedTask(null)
+      setConversation(null)
+      setUploadedFileName(null)
+    } else {
+      setPreviewConversation(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-900">
       <header className="bg-slate-800 shadow-lg border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-slate-100">RooVersation</h1>
             <div className="flex items-center gap-4">
-              <label className="text-sm text-slate-400">Source:</label>
-              <select
-                value={source}
-                onChange={(e) => {
-                  const newSource = e.target.value as Source
-                  localStorage.setItem('convo-viewer-source', newSource)
-                  setSource(newSource)
-                }}
-                className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="nightly">Nightly</option>
-                <option value="production">Production</option>
-              </select>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-sm text-slate-100 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-              >
-                Upload File
-              </button>
+              <h1 className="text-2xl font-bold text-slate-100">RooVersation</h1>
+              
+              {/* Mode Switcher */}
+              <div className="flex bg-slate-700 rounded-lg p-1">
+                <button
+                  onClick={() => handleModeChange('viewer')}
+                  className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                    mode === 'viewer'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  📖 Viewer
+                </button>
+                <button
+                  onClick={() => handleModeChange('builder')}
+                  className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                    mode === 'builder'
+                      ? 'bg-green-600 text-white'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  🔨 Builder
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              {mode === 'viewer' && (
+                <>
+                  <label className="text-sm text-slate-400">Source:</label>
+                  <select
+                    value={source}
+                    onChange={(e) => {
+                      const newSource = e.target.value as Source
+                      localStorage.setItem('convo-viewer-source', newSource)
+                      setSource(newSource)
+                    }}
+                    className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="nightly">Nightly</option>
+                    <option value="production">Production</option>
+                  </select>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-sm text-slate-100 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  >
+                    Upload File
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -234,43 +267,72 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-4">
-            {loadingTasks ? (
-              <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
-                Loading tasks...
+        {mode === 'viewer' ? (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-4">
+              {loadingTasks ? (
+                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                  Loading tasks...
+                </div>
+              ) : (
+                <TaskList
+                  tasks={tasks}
+                  selectedTask={selectedTask}
+                  onSelectTask={loadConversation}
+                  disabled={loadingConversation}
+                />
+              )}
+            </div>
+            <div className="col-span-8">
+              {loadingConversation ? (
+                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                  <div className="animate-pulse">Loading conversation...</div>
+                </div>
+              ) : conversation ? (
+                <ConversationView
+                  messages={conversation}
+                  taskId={selectedTask ?? uploadedFileName ?? 'uploaded'}
+                  onClose={() => {
+                    setConversation(null)
+                    setSelectedTask(null)
+                    setUploadedFileName(null)
+                  }}
+                />
+              ) : (
+                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                  Select a task to view the conversation
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {previewConversation ? (
+              <div>
+                <div className="mb-4 flex items-center gap-2">
+                  <button
+                    onClick={() => setPreviewConversation(null)}
+                    className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded"
+                  >
+                    ← Back to Builder
+                  </button>
+                  <span className="text-slate-400 text-sm">Preview Mode</span>
+                </div>
+                <ConversationView
+                  messages={previewConversation}
+                  taskId="preview"
+                  onClose={() => setPreviewConversation(null)}
+                />
               </div>
             ) : (
-              <TaskList
-                tasks={tasks}
-                selectedTask={selectedTask}
-                onSelectTask={loadConversation}
-                disabled={loadingConversation}
+              <ConversationBuilder 
+                onPreview={handlePreviewFromBuilder}
+                messages={builderMessages}
+                onMessagesChange={setBuilderMessages}
               />
             )}
           </div>
-          <div className="col-span-8">
-            {loadingConversation ? (
-              <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
-                <div className="animate-pulse">Loading conversation...</div>
-              </div>
-            ) : conversation ? (
-              <ConversationView
-                messages={conversation}
-                taskId={selectedTask ?? uploadedFileName ?? 'uploaded'}
-                onClose={() => {
-                  setConversation(null)
-                  setSelectedTask(null)
-                  setUploadedFileName(null)
-                }}
-              />
-            ) : (
-              <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
-                Select a task to view the conversation
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </main>
     </div>
   )
