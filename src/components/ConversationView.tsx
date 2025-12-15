@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import MessageBlock from './MessageBlock'
+import type { UIMessage } from '../types'
 
 interface ContentBlock {
   type: string
@@ -37,7 +38,7 @@ function normalizeContent(content: ContentBlock[] | string): ContentBlock[] {
 
 interface ConversationViewProps {
   messages: Message[]
-  uiMessages?: unknown[] | null
+  uiMessages?: UIMessage[] | null
   taskId: string
   onClose: () => void
 }
@@ -120,7 +121,7 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
   // Create hybrid view combining API messages and UI messages sorted by timestamp
   type HybridItem =
     | { type: 'api'; message: Message; ts: number }
-    | { type: 'ui'; uiMsg: { ts: number; type: string; say?: string; ask?: string; text?: string; partial?: boolean }; ts: number }
+    | { type: 'ui'; uiMsg: UIMessage; ts: number }
 
   const hybridMessages = useMemo((): HybridItem[] => {
     if (!showUiMessages || !uiMessages) return []
@@ -133,8 +134,7 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
     })
     
     // Add UI messages
-    uiMessages.forEach((msg) => {
-      const uiMsg = msg as { ts: number; type: string; say?: string; ask?: string; text?: string; partial?: boolean }
+    uiMessages.forEach((uiMsg) => {
       items.push({ type: 'ui', uiMsg, ts: uiMsg.ts })
     })
     
@@ -335,7 +335,7 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
                 
                 return (
                   <div
-                    key={`ui-${index}`}
+                    key={`ui-${uiMsg.ts}-${index}`}
                     className={`rounded-lg p-3 border ${getBgColor()}`}
                   >
                     <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-600/50">
@@ -368,7 +368,7 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
                 const message = item.message
                 return (
                   <div
-                    key={`api-${index}`}
+                    key={`api-${message.ts}-${index}`}
                     className={`rounded-lg p-4 ${
                       message.isSummary
                         ? 'bg-purple-900/30 border border-purple-700'

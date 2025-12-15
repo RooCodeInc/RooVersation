@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import TaskList from './components/TaskList'
 import ConversationView from './components/ConversationView'
 import ConversationBuilder from './components/ConversationBuilder'
-import type { Task, Message } from './types'
+import type { Task, Message, UIMessage } from './types'
 
 type Source = 'nightly' | 'production'
 type AppMode = 'viewer' | 'builder'
@@ -23,7 +23,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [conversation, setConversation] = useState<Message[] | null>(null)
-  const [uiMessages, setUiMessages] = useState<unknown[] | null>(null)
+  const [uiMessages, setUiMessages] = useState<UIMessage[] | null>(null)
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -159,6 +159,7 @@ export default function App() {
         
         if (Array.isArray(data)) {
           setConversation(data)
+          setUiMessages(null)
           setSelectedTask(null)
           setUploadedFileName(file.name)
         } else {
