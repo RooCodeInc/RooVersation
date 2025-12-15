@@ -23,6 +23,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [conversation, setConversation] = useState<Message[] | null>(null)
+  const [uiMessages, setUiMessages] = useState<unknown[] | null>(null)
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +84,8 @@ export default function App() {
         const res = await fetch(`/api/task/${source}/${selectedTask}`)
         if (!res.ok) return
         const data = await res.json()
-        setConversation(data)
+        setConversation(data.apiConversation)
+        setUiMessages(data.uiMessages)
       } catch {
         // Silently ignore polling errors
       }
@@ -97,6 +99,7 @@ export default function App() {
     setError(null)
     setSelectedTask(null)
     setConversation(null)
+    setUiMessages(null)
     
     try {
       const res = await fetch(`/api/tasks/${source}`)
@@ -117,6 +120,7 @@ export default function App() {
     setError(null)
     setSelectedTask(taskId)
     setConversation(null)
+    setUiMessages(null)
     
     try {
       const res = await fetch(`/api/task/${source}/${taskId}`)
@@ -130,7 +134,8 @@ export default function App() {
         throw new Error('Failed to load conversation')
       }
       const data = await res.json()
-      setConversation(data)
+      setConversation(data.apiConversation)
+      setUiMessages(data.uiMessages)
     } catch {
       setError('Failed to load conversation')
       setSelectedTask(null)
@@ -291,9 +296,11 @@ export default function App() {
               ) : conversation ? (
                 <ConversationView
                   messages={conversation}
+                  uiMessages={uiMessages}
                   taskId={selectedTask ?? uploadedFileName ?? 'uploaded'}
                   onClose={() => {
                     setConversation(null)
+                    setUiMessages(null)
                     setSelectedTask(null)
                     setUploadedFileName(null)
                   }}

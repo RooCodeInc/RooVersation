@@ -37,14 +37,16 @@ function normalizeContent(content: ContentBlock[] | string): ContentBlock[] {
 
 interface ConversationViewProps {
   messages: Message[]
+  uiMessages?: unknown[] | null
   taskId: string
   onClose: () => void
 }
 
-export default function ConversationView({ messages, taskId, onClose }: ConversationViewProps) {
+export default function ConversationView({ messages, uiMessages, taskId, onClose }: ConversationViewProps) {
   const [expandAll, setExpandAll] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [filterCondensed, setFilterCondensed] = useState(true)
+  const [showUiMessages, setShowUiMessages] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isInitialLoad = useRef(true)
 
@@ -115,8 +117,43 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     })
   }, [messages, filterCondensed, existingSummaryIds, existingTruncationIds])
 
+  // Create hybrid view combining API messages and UI messages sorted by timestamp
+  type HybridItem =
+    | { type: 'api'; message: Message; ts: number }
+    | { type: 'ui'; uiMsg: { ts: number; type: string; say?: string; ask?: string; text?: string; partial?: boolean }; ts: number }
+
+  const hybridMessages = useMemo((): HybridItem[] => {
+    if (!showUiMessages || !uiMessages) return []
+    
+    const items: HybridItem[] = []
+    
+    // Add filtered API messages
+    filteredMessages.forEach((message) => {
+      items.push({ type: 'api', message, ts: message.ts })
+    })
+    
+    // Add UI messages
+    uiMessages.forEach((msg) => {
+      const uiMsg = msg as { ts: number; type: string; say?: string; ask?: string; text?: string; partial?: boolean }
+      items.push({ type: 'ui', uiMsg, ts: uiMsg.ts })
+    })
+    
+    // Sort by timestamp
+    items.sort((a, b) => a.ts - b.ts)
+    
+    return items
+  }, [showUiMessages, uiMessages, filteredMessages])
+
   function formatTime(timestamp: number) {
-    return new Date(timestamp).toLocaleString()
+    const date = new Date(timestamp)
+    const ms = date.getMilliseconds().toString().padStart(3, '0')
+    const dateStr = date.toLocaleDateString()
+    const hours = date.getHours()
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const seconds = date.getSeconds().toString().padStart(2, '0')
+    const hour12 = hours % 12 || 12
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    return `${dateStr}, ${hour12}:${minutes}:${seconds}.${ms} ${ampm}`
   }
 
   const copyConversation = useCallback(async () => {
@@ -192,13 +229,31 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
           <div className="flex items-center gap-2">
             <h2 className="font-semibold text-slate-200">Conversation</h2>
             <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">
-              {filteredMessages.length} messages
+              {showUiMessages ? `${hybridMessages.length} items` : `${filteredMessages.length} messages`}
             </span>
+            {showUiMessages && (
+              <span className="text-xs bg-cyan-900/50 text-cyan-300 px-2 py-0.5 rounded-full">
+                Hybrid View
+              </span>
+            )}
           </div>
           <div className="text-xs text-slate-400 font-mono">{taskId}</div>
         </div>
         <div className="flex items-center gap-2">
-          {hiddenCount > 0 && (
+          {uiMessages && uiMessages.length > 0 && (
+            <button
+              onClick={() => setShowUiMessages(!showUiMessages)}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                showUiMessages
+                  ? 'bg-cyan-700 hover:bg-cyan-600 text-cyan-100'
+                  : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+              }`}
+              title={showUiMessages ? 'Showing UI Messages' : 'Show UI Messages'}
+            >
+              {showUiMessages ? '🖥️ UI Messages' : '🖥️ Show UI'}
+            </button>
+          )}
+          {!showUiMessages && hiddenCount > 0 && (
             <button
               onClick={() => setFilterCondensed(!filterCondensed)}
               className={`px-3 py-1 text-sm rounded transition-colors ${
@@ -249,62 +304,188 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
           onScroll={handleScroll}
           className="max-h-[calc(100vh-200px)] overflow-y-auto p-4 space-y-4"
         >
-          {filteredMessages.map((message, index) => (
-            <div
-              key={index}
-              className={`rounded-lg p-4 ${
-                message.isSummary
-                  ? 'bg-purple-900/30 border border-purple-700'
-                  : message.isTruncationMarker
-                    ? 'bg-orange-900/30 border border-orange-700'
-                    : message.role === 'user'
-                      ? 'bg-blue-900/30 border border-blue-800'
-                      : 'bg-slate-700/50 border border-slate-600'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-600">
-                <div className="flex items-center gap-2">
-                  <span className={`font-semibold text-sm ${
-                    message.isSummary
-                      ? 'text-purple-300'
-                      : message.isTruncationMarker
-                        ? 'text-orange-300'
-                        : message.role === 'user' ? 'text-blue-300' : 'text-slate-300'
-                  }`}>
-                    {message.isSummary
-                      ? '📋 Summary'
-                      : message.isTruncationMarker
-                        ? '✂️ Truncation'
-                        : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+          {showUiMessages && hybridMessages.length > 0 ? (
+            // Render Hybrid View - API messages and UI messages sorted by timestamp
+            hybridMessages.map((item, index) => {
+              if (item.type === 'ui') {
+                const uiMsg = item.uiMsg
+                const msgType = uiMsg.say || uiMsg.ask || 'unknown'
+                
+                const getBgColor = () => {
+                  switch (msgType) {
+                    case 'text': return 'bg-cyan-900/20 border-cyan-800'
+                    case 'user_feedback': return 'bg-cyan-900/20 border-cyan-800'
+                    case 'reasoning': return 'bg-yellow-900/30 border-yellow-700'
+                    case 'api_req_started': return 'bg-slate-700/30 border-slate-600'
+                    case 'completion_result': return 'bg-green-900/30 border-green-700'
+                    default: return 'bg-slate-700/50 border-slate-600'
+                  }
+                }
+                
+                const getIcon = () => {
+                  switch (msgType) {
+                    case 'text': return '💬'
+                    case 'user_feedback': return '👤'
+                    case 'reasoning': return '🧠'
+                    case 'api_req_started': return '🔄'
+                    case 'completion_result': return '✅'
+                    default: return '📝'
+                  }
+                }
+                
+                return (
+                  <div
+                    key={`ui-${index}`}
+                    className={`rounded-lg p-3 border ${getBgColor()}`}
+                  >
+                    <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-600/50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-cyan-300">
+                          {getIcon()} {msgType}
+                        </span>
+                        <span className="text-xs bg-cyan-900/50 text-cyan-400 px-1.5 py-0.5 rounded">
+                          UI
+                        </span>
+                        {uiMsg.partial && (
+                          <span className="text-xs bg-yellow-900/50 text-yellow-300 px-1.5 py-0.5 rounded">
+                            partial
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-400">
+                        {formatTime(uiMsg.ts)}
+                      </span>
+                    </div>
+                    {uiMsg.text && (
+                      <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">
+                        {uiMsg.text}
+                      </pre>
+                    )}
+                  </div>
+                )
+              } else {
+                // Render API message
+                const message = item.message
+                return (
+                  <div
+                    key={`api-${index}`}
+                    className={`rounded-lg p-4 ${
+                      message.isSummary
+                        ? 'bg-purple-900/30 border border-purple-700'
+                        : message.isTruncationMarker
+                          ? 'bg-orange-900/30 border border-orange-700'
+                          : message.role === 'user'
+                            ? 'bg-blue-900/30 border border-blue-800'
+                            : 'bg-slate-700/50 border border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-semibold text-sm ${
+                          message.isSummary
+                            ? 'text-purple-300'
+                            : message.isTruncationMarker
+                              ? 'text-orange-300'
+                              : message.role === 'user' ? 'text-blue-300' : 'text-slate-300'
+                        }`}>
+                          {message.isSummary
+                            ? '📋 Summary'
+                            : message.isTruncationMarker
+                              ? '✂️ Truncation'
+                              : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                        </span>
+                        <span className="text-xs bg-slate-600 text-slate-300 px-1.5 py-0.5 rounded">
+                          API
+                        </span>
+                        {message.condenseId && (
+                          <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
+                            condense: {message.condenseId.slice(0, 8)}…
+                          </span>
+                        )}
+                        {message.truncationId && (
+                          <span className="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded">
+                            truncation: {message.truncationId.slice(0, 8)}…
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-400">
+                        {formatTime(message.ts)}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {normalizeContent(message.content).map((block, blockIndex) => (
+                        <MessageBlock
+                          key={blockIndex}
+                          block={block}
+                          expanded={expandAll}
+                          hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+            })
+          ) : (
+            // Render API Conversation Messages only
+            filteredMessages.map((message, index) => (
+              <div
+                key={index}
+                className={`rounded-lg p-4 ${
+                  message.isSummary
+                    ? 'bg-purple-900/30 border border-purple-700'
+                    : message.isTruncationMarker
+                      ? 'bg-orange-900/30 border border-orange-700'
+                      : message.role === 'user'
+                        ? 'bg-blue-900/30 border border-blue-800'
+                        : 'bg-slate-700/50 border border-slate-600'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-600">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-semibold text-sm ${
+                      message.isSummary
+                        ? 'text-purple-300'
+                        : message.isTruncationMarker
+                          ? 'text-orange-300'
+                          : message.role === 'user' ? 'text-blue-300' : 'text-slate-300'
+                    }`}>
+                      {message.isSummary
+                        ? '📋 Summary'
+                        : message.isTruncationMarker
+                          ? '✂️ Truncation'
+                          : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                    </span>
+                    {message.condenseId && (
+                      <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
+                        condense: {message.condenseId.slice(0, 8)}…
+                      </span>
+                    )}
+                    {message.truncationId && (
+                      <span className="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded">
+                        truncation: {message.truncationId.slice(0, 8)}…
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {formatTime(message.ts)}
                   </span>
-                  {message.condenseId && (
-                    <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
-                      condense: {message.condenseId.slice(0, 8)}…
-                    </span>
-                  )}
-                  {message.truncationId && (
-                    <span className="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded">
-                      truncation: {message.truncationId.slice(0, 8)}…
-                    </span>
-                  )}
                 </div>
-                <span className="text-xs text-slate-400">
-                  {formatTime(message.ts)}
-                </span>
+                
+                <div className="space-y-3">
+                  {normalizeContent(message.content).map((block, blockIndex) => (
+                    <MessageBlock
+                      key={blockIndex}
+                      block={block}
+                      expanded={expandAll}
+                      hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
+                    />
+                  ))}
+                </div>
               </div>
-              
-              <div className="space-y-3">
-                {normalizeContent(message.content).map((block, blockIndex) => (
-                  <MessageBlock
-                    key={blockIndex}
-                    block={block}
-                    expanded={expandAll}
-                    hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
         
         {!isAtBottom && (
