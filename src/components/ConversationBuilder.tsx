@@ -185,22 +185,24 @@ function DraggableMessage({ message, index, onUpdate, onDelete, onDuplicate, sel
                 >
                   + Tool Use ▼
                 </button>
-                <div className="absolute left-0 top-full mt-1 bg-slate-800 border border-slate-600 rounded shadow-lg z-20 hidden group-hover:block min-w-[200px] max-h-[300px] overflow-y-auto">
-                  {selectedTools.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-slate-400">
-                      No tools selected. Add tools from the Tools panel.
-                    </div>
-                  ) : (
-                    selectedTools.map((tool) => (
-                      <button
-                        key={tool.name}
-                        onClick={() => addContentBlock('tool_use', tool)}
-                        className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-700"
-                      >
-                        {tool.name}
-                      </button>
-                    ))
-                  )}
+                <div className="absolute left-0 top-full pt-1 hidden group-hover:block">
+                  <div className="bg-slate-800 border border-slate-600 rounded shadow-lg z-20 min-w-[200px] max-h-[300px] overflow-y-auto">
+                    {selectedTools.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-400">
+                        No tools selected. Add tools from the Tools panel.
+                      </div>
+                    ) : (
+                      selectedTools.map((tool) => (
+                        <button
+                          key={tool.name}
+                          onClick={() => addContentBlock('tool_use', tool)}
+                          className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-700"
+                        >
+                          {tool.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -225,6 +227,18 @@ interface ConversationBuilderProps {
   onMessagesChange: (messages: (Message & { _id: string })[]) => void
 }
 
+interface APILogEntry {
+  id: string
+  timestamp: Date
+  request: {
+    model: string
+    messages: unknown[]
+    tools?: unknown[]
+  }
+  response: unknown
+  error?: string
+}
+
 export default function ConversationBuilder({ onPreview, messages, onMessagesChange }: ConversationBuilderProps) {
   const [selectedTools, setSelectedTools] = useState<TestTool[]>([])
   const [apiSettings, setApiSettings] = useState<APISettingsType>(() => {
@@ -239,6 +253,9 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
   const [apiResponse, setApiResponse] = useState<string | null>(null)
   const [showToolsPanel, setShowToolsPanel] = useState(false)
   const [isResponseExpanded, setIsResponseExpanded] = useState(false)
+  const [apiLogs, setApiLogs] = useState<APILogEntry[]>([])
+  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set())
+  const [showLogsPanel, setShowLogsPanel] = useState(true)
 
   useEffect(() => {
     localStorage.setItem('convo-builder-api-settings', JSON.stringify(apiSettings))
@@ -341,23 +358,84 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
     setApiResponse(null)
 
     try {
-      const cleanMessages = messages.map(({ _id, ts, ...rest }) => ({
-        role: rest.role,
-        content: rest.content.map(block => {
-          if (block.type === 'text') {
-            return { type: 'text', text: block.text || '' }
+      interface OpenAIMessage {
+        role: string
+        content?: Array<{ type: string; text?: string; image_url?: { url: string } }> | string | null
+        tool_call_id?: string
+        tool_calls?: Array<{
+          id: string
+          type: 'function'
+          function: {
+            name: string
+            arguments: string
           }
-          if (block.type === 'image' && block.source) {
-            return {
-              type: 'image_url',
-              image_url: {
-                url: `data:${block.source.media_type || 'image/png'};base64,${block.source.data || ''}`
+        }>
+      }
+      
+      const cleanMessages: OpenAIMessage[] = []
+
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          // Handle user messages - separate tool results from other content
+          const toolResultBlocks = msg.content.filter(b => b.type === 'tool_result')
+          const otherBlocks = msg.content.filter(b => b.type !== 'tool_result')
+
+          // Add tool results as separate "tool" role messages (OpenAI format)
+          for (const toolResult of toolResultBlocks) {
+            cleanMessages.push({
+              role: 'tool',
+              tool_call_id: toolResult.tool_use_id || '',
+              content: toolResult.content || ''
+            })
+          }
+
+          // Add remaining content as regular user message
+          if (otherBlocks.length > 0) {
+            cleanMessages.push({
+              role: 'user',
+              content: otherBlocks.map(block => {
+                if (block.type === 'text') {
+                  return { type: 'text', text: block.text || '' }
+                }
+                if (block.type === 'image' && block.source) {
+                  return {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${block.source.media_type || 'image/png'};base64,${block.source.data || ''}`
+                    }
+                  }
+                }
+                return block as { type: string; text?: string; image_url?: { url: string } }
+              })
+            })
+          }
+        } else {
+          // Handle assistant messages - convert tool_use to tool_calls format
+          const toolUseBlocks = msg.content.filter(b => b.type === 'tool_use')
+          const textBlocks = msg.content.filter(b => b.type === 'text')
+          
+          const assistantMsg: OpenAIMessage = {
+            role: 'assistant',
+            content: textBlocks.length > 0
+              ? textBlocks.map(b => b.text || '').join('\n')
+              : null
+          }
+
+          // Convert tool_use blocks to OpenAI tool_calls format
+          if (toolUseBlocks.length > 0) {
+            assistantMsg.tool_calls = toolUseBlocks.map(block => ({
+              id: block.id || '',
+              type: 'function' as const,
+              function: {
+                name: block.name || '',
+                arguments: JSON.stringify(block.input || {})
               }
-            }
+            }))
           }
-          return block
-        })
-      }))
+
+          cleanMessages.push(assistantMsg)
+        }
+      }
 
       const body: Record<string, unknown> = {
         model: apiSettings.model,
@@ -376,6 +454,18 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
         }))
       }
 
+      const logId = crypto.randomUUID()
+      const logEntry: APILogEntry = {
+        id: logId,
+        timestamp: new Date(),
+        request: {
+          model: apiSettings.model,
+          messages: cleanMessages,
+          tools: body.tools as unknown[] | undefined
+        },
+        response: null
+      }
+
       const response = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -386,6 +476,9 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
       })
 
       const data = await response.json()
+      logEntry.response = data
+      setApiLogs(prev => [logEntry, ...prev])
+      setExpandedLogIds(prev => new Set([...prev, logId]))
       setApiResponse(JSON.stringify(data, null, 2))
 
       if (data.choices?.[0]?.message) {
@@ -418,7 +511,20 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
         }
       }
     } catch (err) {
-      setApiResponse(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      const logEntry: APILogEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        request: {
+          model: apiSettings.model,
+          messages: [],
+          tools: undefined
+        },
+        response: null,
+        error: errorMsg
+      }
+      setApiLogs(prev => [logEntry, ...prev])
+      setApiResponse(`Error: ${errorMsg}`)
     } finally {
       setIsTestingAPI(false)
     }
@@ -575,9 +681,9 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
       </div>
 
       {/* Right Panel - Tools & API */}
-      <div className="w-80 flex flex-col gap-4">
+      <div className="w-96 flex flex-col gap-4 overflow-hidden">
         {/* Tools Panel */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden flex-shrink-0">
           <button
             onClick={() => setShowToolsPanel(!showToolsPanel)}
             className="w-full p-3 flex items-center justify-between text-slate-200 hover:bg-slate-700"
@@ -610,7 +716,7 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
         </div>
 
         {/* API Settings */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 space-y-3 flex-1 flex flex-col min-h-0">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 space-y-3 flex-shrink-0">
           <h3 className="font-medium text-slate-200">🧪 API Testing</h3>
           
           <div>
@@ -653,33 +759,128 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
           >
             {isTestingAPI ? 'Testing...' : 'Send to API'}
           </button>
+        </div>
+
+        {/* API Logs Panel */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden flex-1 flex flex-col min-h-0">
+          <button
+            onClick={() => setShowLogsPanel(!showLogsPanel)}
+            className="w-full p-3 flex items-center justify-between text-slate-200 hover:bg-slate-700 flex-shrink-0"
+          >
+            <span className="font-medium">📋 API Logs ({apiLogs.length})</span>
+            <div className="flex items-center gap-2">
+              {apiLogs.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setApiLogs([])
+                    setExpandedLogIds(new Set())
+                  }}
+                  className="px-2 py-0.5 text-xs bg-red-900/50 hover:bg-red-900 text-red-300 rounded"
+                >
+                  Clear
+                </button>
+              )}
+              <span>{showLogsPanel ? '▼' : '▶'}</span>
+            </div>
+          </button>
           
-          {apiResponse && (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-slate-400">Response</label>
-                <div className="flex gap-1">
-                  <button
-                    onClick={copyApiResponse}
-                    className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
-                    title="Copy response"
-                  >
-                    Copy
-                  </button>
-                  <button
-                    onClick={() => setIsResponseExpanded(!isResponseExpanded)}
-                    className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
-                    title={isResponseExpanded ? 'Collapse' : 'Expand'}
-                  >
-                    {isResponseExpanded ? '▼ Collapse' : '▲ Expand'}
-                  </button>
+          {showLogsPanel && (
+            <div className="border-t border-slate-700 overflow-y-auto flex-1">
+              {apiLogs.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-sm">
+                  No API calls yet. Send a request to see logs here.
                 </div>
-              </div>
-              <pre className={`bg-slate-900 border border-slate-600 rounded p-2 text-xs text-slate-300 overflow-auto flex-1 ${
-                isResponseExpanded ? 'max-h-[400px]' : 'max-h-32'
-              }`}>
-                {apiResponse}
-              </pre>
+              ) : (
+                <div className="divide-y divide-slate-700">
+                  {apiLogs.map((log) => (
+                    <div key={log.id} className="text-xs">
+                      <button
+                        onClick={() => {
+                          setExpandedLogIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(log.id)) {
+                              next.delete(log.id)
+                            } else {
+                              next.add(log.id)
+                            }
+                            return next
+                          })
+                        }}
+                        className={`w-full p-2 text-left hover:bg-slate-700 flex items-center gap-2 ${
+                          log.error ? 'bg-red-900/20' : ''
+                        }`}
+                      >
+                        <span>{expandedLogIds.has(log.id) ? '▼' : '▶'}</span>
+                        <span className="text-slate-400">
+                          {log.timestamp.toLocaleTimeString()}
+                        </span>
+                        <span className="text-slate-200 truncate flex-1">
+                          {log.request.model}
+                        </span>
+                        {log.error ? (
+                          <span className="text-red-400">Error</span>
+                        ) : (
+                          <span className="text-green-400">OK</span>
+                        )}
+                      </button>
+                      
+                      {expandedLogIds.has(log.id) && (
+                        <div className="p-2 bg-slate-900 space-y-2">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-slate-400 font-medium">Request Messages:</span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(JSON.stringify(log.request.messages, null, 2))}
+                                className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                            <pre className="bg-slate-950 p-2 rounded overflow-x-auto text-[10px] text-slate-300 max-h-48">
+                              {JSON.stringify(log.request.messages, null, 2)}
+                            </pre>
+                          </div>
+                          
+                          {log.request.tools && (
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-slate-400 font-medium">Tools:</span>
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(JSON.stringify(log.request.tools, null, 2))}
+                                  className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                              <pre className="bg-slate-950 p-2 rounded overflow-x-auto text-[10px] text-slate-300 max-h-32">
+                                {JSON.stringify(log.request.tools, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                          
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-slate-400 font-medium">Response:</span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(JSON.stringify(log.response, null, 2))}
+                                className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                            <pre className={`bg-slate-950 p-2 rounded overflow-x-auto text-[10px] max-h-48 ${
+                              log.error ? 'text-red-300' : 'text-slate-300'
+                            }`}>
+                              {log.error || JSON.stringify(log.response, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
