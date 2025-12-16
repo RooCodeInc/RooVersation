@@ -2,7 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import TaskList from './components/TaskList'
 import ConversationView from './components/ConversationView'
 import ConversationBuilder from './components/ConversationBuilder'
-import type { Task, Message } from './types'
+import type { Task, Message, UIMessage } from './types'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { BookOpen, Hammer, Upload, AlertCircle } from 'lucide-react'
 
 type Source = 'nightly' | 'production'
 type AppMode = 'viewer' | 'builder'
@@ -23,6 +34,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [conversation, setConversation] = useState<Message[] | null>(null)
+  const [uiMessages, setUiMessages] = useState<UIMessage[] | null>(null)
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +95,8 @@ export default function App() {
         const res = await fetch(`/api/task/${source}/${selectedTask}`)
         if (!res.ok) return
         const data = await res.json()
-        setConversation(data)
+        setConversation(data.apiConversation)
+        setUiMessages(data.uiMessages)
       } catch {
         // Silently ignore polling errors
       }
@@ -97,6 +110,7 @@ export default function App() {
     setError(null)
     setSelectedTask(null)
     setConversation(null)
+    setUiMessages(null)
     
     try {
       const res = await fetch(`/api/tasks/${source}`)
@@ -117,6 +131,7 @@ export default function App() {
     setError(null)
     setSelectedTask(taskId)
     setConversation(null)
+    setUiMessages(null)
     
     try {
       const res = await fetch(`/api/task/${source}/${taskId}`)
@@ -130,7 +145,8 @@ export default function App() {
         throw new Error('Failed to load conversation')
       }
       const data = await res.json()
-      setConversation(data)
+      setConversation(data.apiConversation)
+      setUiMessages(data.uiMessages)
     } catch {
       setError('Failed to load conversation')
       setSelectedTask(null)
@@ -154,6 +170,7 @@ export default function App() {
         
         if (Array.isArray(data)) {
           setConversation(data)
+          setUiMessages(null)
           setSelectedTask(null)
           setUploadedFileName(file.name)
         } else {
@@ -180,9 +197,10 @@ export default function App() {
     setPreviewConversation(messages)
   }
 
-  function handleModeChange(newMode: AppMode) {
-    setMode(newMode)
-    if (newMode === 'builder') {
+  function handleModeChange(newMode: string) {
+    const appMode = newMode as AppMode
+    setMode(appMode)
+    if (appMode === 'builder') {
       setSelectedTask(null)
       setConversation(null)
       setUploadedFileName(null)
@@ -192,54 +210,59 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="bg-slate-800 shadow-lg border-b border-slate-700">
+    <div className="min-h-screen bg-background">
+      <header className="bg-card shadow-lg border-b border-border">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-slate-100">RooVersation</h1>
+              <h1 className="text-2xl font-bold text-foreground">RooVersation</h1>
               
-              {/* Mode Switcher */}
-              <div className="flex bg-slate-700 rounded-lg p-1">
-                <button
-                  onClick={() => handleModeChange('viewer')}
-                  className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-                    mode === 'viewer'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
+              <ToggleGroup
+                type="single"
+                value={mode}
+                onValueChange={(value) => value && handleModeChange(value)}
+                className="bg-muted rounded-lg p-1"
+              >
+                <ToggleGroupItem
+                  value="viewer"
+                  aria-label="Viewer mode"
+                  className="data-[state=on]:bg-background data-[state=on]:text-foreground px-4 py-1.5 text-sm"
                 >
-                  📖 Viewer
-                </button>
-                <button
-                  onClick={() => handleModeChange('builder')}
-                  className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-                    mode === 'builder'
-                      ? 'bg-green-600 text-white'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  Viewer
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="builder"
+                  aria-label="Builder mode"
+                  className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground px-4 py-1.5 text-sm"
                 >
-                  🔨 Builder
-                </button>
-              </div>
+                  <Hammer className="h-4 w-4 mr-2" />
+                  Builder
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
             
             <div className="flex items-center gap-4">
               {mode === 'viewer' && (
                 <>
-                  <label className="text-sm text-slate-400">Source:</label>
-                  <select
-                    value={source}
-                    onChange={(e) => {
-                      const newSource = e.target.value as Source
-                      localStorage.setItem('convo-viewer-source', newSource)
-                      setSource(newSource)
-                    }}
-                    className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="nightly">Nightly</option>
-                    <option value="production">Production</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Source:</span>
+                    <Select
+                      value={source}
+                      onValueChange={(value: Source) => {
+                        localStorage.setItem('convo-viewer-source', value)
+                        setSource(value)
+                      }}
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nightly">Nightly</SelectItem>
+                        <SelectItem value="production">Production</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -247,12 +270,13 @@ export default function App() {
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <button
+                  <Button
+                    variant="outline"
                     onClick={() => fileInputRef.current?.click()}
-                    className="border border-slate-600 rounded-md px-3 py-2 bg-slate-700 text-sm text-slate-100 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   >
+                    <Upload className="h-4 w-4 mr-2" />
                     Upload File
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -262,16 +286,17 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {error && (
-          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-md mb-4">
-            {error}
-          </div>
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
         {mode === 'viewer' ? (
           <div className="grid grid-cols-12 gap-6">
             <div className="col-span-4">
               {loadingTasks ? (
-                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                <div className="bg-card rounded-lg shadow-lg p-8 text-center text-muted-foreground border border-border">
                   Loading tasks...
                 </div>
               ) : (
@@ -285,21 +310,23 @@ export default function App() {
             </div>
             <div className="col-span-8">
               {loadingConversation ? (
-                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                <div className="bg-card rounded-lg shadow-lg p-8 text-center text-muted-foreground border border-border">
                   <div className="animate-pulse">Loading conversation...</div>
                 </div>
               ) : conversation ? (
                 <ConversationView
                   messages={conversation}
+                  uiMessages={uiMessages}
                   taskId={selectedTask ?? uploadedFileName ?? 'uploaded'}
                   onClose={() => {
                     setConversation(null)
+                    setUiMessages(null)
                     setSelectedTask(null)
                     setUploadedFileName(null)
                   }}
                 />
               ) : (
-                <div className="bg-slate-800 rounded-lg shadow-lg p-8 text-center text-slate-400 border border-slate-700">
+                <div className="bg-card rounded-lg shadow-lg p-8 text-center text-muted-foreground border border-border">
                   Select a task to view the conversation
                 </div>
               )}
@@ -310,13 +337,14 @@ export default function App() {
             {previewConversation ? (
               <div>
                 <div className="mb-4 flex items-center gap-2">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setPreviewConversation(null)}
-                    className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded"
                   >
                     ← Back to Builder
-                  </button>
-                  <span className="text-slate-400 text-sm">Preview Mode</span>
+                  </Button>
+                  <span className="text-muted-foreground text-sm">Preview Mode</span>
                 </div>
                 <ConversationView
                   messages={previewConversation}
@@ -325,7 +353,7 @@ export default function App() {
                 />
               </div>
             ) : (
-              <ConversationBuilder 
+              <ConversationBuilder
                 onPreview={handlePreviewFromBuilder}
                 messages={builderMessages}
                 onMessagesChange={setBuilderMessages}

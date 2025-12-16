@@ -27,6 +27,15 @@ export interface Message {
   truncationParent?: string
 }
 
+export interface UIMessage {
+  ts: number
+  type: string
+  say?: string
+  ask?: string
+  text?: string
+  partial?: boolean
+}
+
 export interface Task {
   id: string
   timestamp: number

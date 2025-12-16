@@ -86,12 +86,25 @@ app.get('/api/task/:source/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid source' });
   }
 
-  const conversationPath = path.join(tasksPath, id, 'api_conversation_history.json');
+  const apiConversationPath = path.join(tasksPath, id, 'api_conversation_history.json');
+  const uiMessagesPath = path.join(tasksPath, id, 'ui_messages.json');
   
   try {
-    const content = await fs.readFile(conversationPath, 'utf-8');
-    const conversation = JSON.parse(content);
-    res.json(conversation);
+    const apiContent = await fs.readFile(apiConversationPath, 'utf-8');
+    const apiConversation = JSON.parse(apiContent);
+    
+    let uiMessages = null;
+    try {
+      const uiContent = await fs.readFile(uiMessagesPath, 'utf-8');
+      uiMessages = JSON.parse(uiContent);
+    } catch {
+      // ui_messages.json might not exist, that's ok
+    }
+    
+    res.json({
+      apiConversation,
+      uiMessages
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to read conversation' });
   }

@@ -1,5 +1,24 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { X, Copy, ChevronDown, ChevronRight, ArrowDown } from 'lucide-react'
 import MessageBlock from './MessageBlock'
+import type { UIMessage } from '../types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface ContentBlock {
   type: string
@@ -37,18 +56,81 @@ function normalizeContent(content: ContentBlock[] | string): ContentBlock[] {
 
 interface ConversationViewProps {
   messages: Message[]
+  uiMessages?: UIMessage[] | null
   taskId: string
   onClose: () => void
 }
 
-export default function ConversationView({ messages, taskId, onClose }: ConversationViewProps) {
+interface UIMessageContentBlockProps {
+  text: string
+  expanded: boolean
+  badgeClass: string
+}
+
+function UIMessageContentBlock({ text, expanded: initialExpanded, badgeClass }: UIMessageContentBlockProps) {
+  const [isExpanded, setIsExpanded] = useState(initialExpanded)
+  
+  useEffect(() => {
+    setIsExpanded(initialExpanded)
+  }, [initialExpanded])
+  
+  const getPreviewText = () => {
+    const maxLength = 100
+    const cleaned = text.replace(/\s+/g, ' ').trim()
+    if (cleaned.length <= maxLength) return cleaned
+    return cleaned.slice(0, maxLength) + '…'
+  }
+  
+  return (
+    <Collapsible
+      open={isExpanded}
+      onOpenChange={setIsExpanded}
+      className="border border-border rounded p-3 bg-muted"
+    >
+      <CollapsibleTrigger className="w-full text-left hover:bg-muted/80 -m-3 p-3 rounded transition-colors">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={`text-xs shrink-0 ${badgeClass}`}>
+            text
+          </Badge>
+          {!isExpanded && (
+            <span className="text-xs text-muted-foreground truncate min-w-0 flex-1">
+              {getPreviewText()}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground shrink-0 ml-auto flex items-center gap-1">
+            {isExpanded ? (
+              <>
+                <ChevronDown className="h-3 w-3" />
+                Collapse
+              </>
+            ) : (
+              <>
+                <ChevronRight className="h-3 w-3" />
+                Expand
+              </>
+            )}
+          </span>
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="message-content mt-2 overflow-hidden">
+          <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-all bg-background p-3 rounded border border-border" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+            {text}
+          </pre>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+export default function ConversationView({ messages, uiMessages, taskId, onClose }: ConversationViewProps) {
   const [expandAll, setExpandAll] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [filterCondensed, setFilterCondensed] = useState(true)
+  const [showUiMessages, setShowUiMessages] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isInitialLoad = useRef(true)
 
-  // Track tool uses without results (from main)
   const toolUsesMissingResults = useMemo(() => {
     const toolResultIds = new Set<string>()
     const toolUsePositions = new Map<string, { messageIndex: number; blockIndex: number }>()
@@ -79,7 +161,6 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     return missingResults
   }, [messages])
 
-  // Condensed message filtering (from PR)
   const existingSummaryIds = useMemo(() => new Set(
     messages
       .filter((m) => m.isSummary && m.condenseId)
@@ -92,7 +173,6 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
       .map((m) => m.truncationId!)
   ), [messages])
 
-  // Calculate how many messages would be hidden
   const hiddenCount = useMemo(() => {
     return messages.filter((m) =>
       (m.condenseParent && existingSummaryIds.has(m.condenseParent)) ||
@@ -100,7 +180,6 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     ).length
   }, [messages, existingSummaryIds, existingTruncationIds])
 
-  // Filter messages based on visibility algorithm
   const filteredMessages = useMemo(() => {
     if (!filterCondensed) return messages
 
@@ -115,8 +194,38 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
     })
   }, [messages, filterCondensed, existingSummaryIds, existingTruncationIds])
 
+  type HybridItem =
+    | { type: 'api'; message: Message; ts: number }
+    | { type: 'ui'; uiMsg: UIMessage; ts: number }
+
+  const hybridMessages = useMemo((): HybridItem[] => {
+    if (!showUiMessages || !uiMessages) return []
+    
+    const items: HybridItem[] = []
+    
+    filteredMessages.forEach((message) => {
+      items.push({ type: 'api', message, ts: message.ts })
+    })
+    
+    uiMessages.forEach((uiMsg) => {
+      items.push({ type: 'ui', uiMsg, ts: uiMsg.ts })
+    })
+    
+    items.sort((a, b) => a.ts - b.ts)
+    
+    return items
+  }, [showUiMessages, uiMessages, filteredMessages])
+
   function formatTime(timestamp: number) {
-    return new Date(timestamp).toLocaleString()
+    const date = new Date(timestamp)
+    const ms = date.getMilliseconds().toString().padStart(3, '0')
+    const dateStr = date.toLocaleDateString()
+    const hours = date.getHours()
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const seconds = date.getSeconds().toString().padStart(2, '0')
+    const hour12 = hours % 12 || 12
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    return `${dateStr}, ${hour12}:${minutes}:${seconds}.${ms} ${ampm}`
   }
 
   const copyConversation = useCallback(async () => {
@@ -186,140 +295,279 @@ export default function ConversationView({ messages, taskId, onClose }: Conversa
   }, [messages, isAtBottom, scrollToBottom])
 
   return (
-    <div className="bg-slate-800 rounded-lg shadow-lg overflow-hidden border border-slate-700">
-      <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex items-center justify-between sticky top-0 z-10">
-        <div>
+    <Card className="overflow-hidden bg-background">
+      <CardHeader className="py-3 px-4 border-b border-border flex flex-row items-center justify-between space-y-0 sticky top-0 z-10 bg-background">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-slate-200">Conversation</h2>
-            <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">
-              {filteredMessages.length} messages
-            </span>
+            <CardTitle className="text-base">Conversation</CardTitle>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {showUiMessages ? `${hybridMessages.length} items` : `${filteredMessages.length} messages`}
+            </Badge>
+            {showUiMessages && (
+              <Badge className="text-xs font-normal bg-teal-600 text-white hover:bg-teal-700">
+                Hybrid
+              </Badge>
+            )}
           </div>
-          <div className="text-xs text-slate-400 font-mono">{taskId}</div>
+          <div className="text-xs text-muted-foreground font-mono truncate">{taskId}</div>
         </div>
-        <div className="flex items-center gap-2">
-          {hiddenCount > 0 && (
-            <button
-              onClick={() => setFilterCondensed(!filterCondensed)}
-              className={`px-3 py-1 text-sm rounded transition-colors ${
-                filterCondensed
-                  ? 'bg-purple-700 hover:bg-purple-600 text-purple-100'
-                  : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-              }`}
-              title={filterCondensed
-                ? `Showing ${filteredMessages.length} messages (${hiddenCount} hidden)`
-                : `Showing all ${messages.length} messages`
-              }
-            >
-              {filterCondensed ? `📦 ${hiddenCount} Hidden` : `📦 Hide ${hiddenCount}`}
-            </button>
-          )}
-          <button
-            onClick={() => setExpandAll(!expandAll)}
-            className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
-          >
-            {expandAll ? 'Collapse All' : 'Expand All'}
-          </button>
-          <button
-            onClick={copyConversation}
-            className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
-            title="Copy conversation JSON"
-          >
-            Copy
-          </button>
-          <button
-            onClick={copyConversationStructure}
-            className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
-            title="Copy structure only (no message content)"
-          >
-            Copy Structure
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-      
-      <div className="relative">
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="max-h-[calc(100vh-200px)] overflow-y-auto p-4 space-y-4"
-        >
-          {filteredMessages.map((message, index) => (
-            <div
-              key={index}
-              className={`rounded-lg p-4 ${
-                message.isSummary
-                  ? 'bg-purple-900/30 border border-purple-700'
-                  : message.isTruncationMarker
-                    ? 'bg-orange-900/30 border border-orange-700'
-                    : message.role === 'user'
-                      ? 'bg-blue-900/30 border border-blue-800'
-                      : 'bg-slate-700/50 border border-slate-600'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-600">
-                <div className="flex items-center gap-2">
-                  <span className={`font-semibold text-sm ${
-                    message.isSummary
-                      ? 'text-purple-300'
-                      : message.isTruncationMarker
-                        ? 'text-orange-300'
-                        : message.role === 'user' ? 'text-blue-300' : 'text-slate-300'
-                  }`}>
-                    {message.isSummary
-                      ? '📋 Summary'
-                      : message.isTruncationMarker
-                        ? '✂️ Truncation'
-                        : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
-                  </span>
-                  {message.condenseId && (
-                    <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
-                      condense: {message.condenseId.slice(0, 8)}…
-                    </span>
-                  )}
-                  {message.truncationId && (
-                    <span className="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded">
-                      truncation: {message.truncationId.slice(0, 8)}…
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-400">
-                  {formatTime(message.ts)}
-                </span>
-              </div>
-              
-              <div className="space-y-3">
-                {normalizeContent(message.content).map((block, blockIndex) => (
-                  <MessageBlock
-                    key={blockIndex}
-                    block={block}
-                    expanded={expandAll}
-                    hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
-                  />
-                ))}
-              </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {uiMessages && uiMessages.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="ui-toggle" className="text-xs text-muted-foreground cursor-pointer">
+                UI
+              </Label>
+              <Switch
+                id="ui-toggle"
+                checked={showUiMessages}
+                onCheckedChange={setShowUiMessages}
+                className="data-[state=checked]:bg-teal-600"
+              />
             </div>
-          ))}
+          )}
+          {!showUiMessages && hiddenCount > 0 && (
+            <Button
+              variant={filterCondensed ? "default" : "secondary"}
+              size="sm"
+              onClick={() => setFilterCondensed(!filterCondensed)}
+              className={filterCondensed ? "bg-violet-600 hover:bg-violet-500 text-xs h-7" : "text-xs h-7"}
+            >
+              {filterCondensed ? `${hiddenCount} Hidden` : `Hide ${hiddenCount}`}
+            </Button>
+          )}
+          <div className="flex items-center gap-2">
+            <Label htmlFor="expand-toggle" className="text-xs text-muted-foreground cursor-pointer">
+              Expand
+            </Label>
+            <Switch
+              id="expand-toggle"
+              checked={expandAll}
+              onCheckedChange={setExpandAll}
+            />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs h-7">
+                <Copy className="h-3 w-3 mr-1" />
+                Copy
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={copyConversation}>
+                Copy Full JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={copyConversationStructure}>
+                Copy Structure Only
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-7 w-7"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
+      </CardHeader>
+      
+      <CardContent className="p-0 relative">
+        <ScrollArea className="h-[calc(100vh-200px)]">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="p-4 space-y-3"
+          >
+            {showUiMessages && hybridMessages.length > 0 ? (
+              hybridMessages.map((item, index) => {
+                if (item.type === 'ui') {
+                  const uiMsg = item.uiMsg
+                  const msgType = uiMsg.say || uiMsg.ask || 'unknown'
+                  
+                  const getTypeBadgeClass = () => {
+                    switch (msgType) {
+                      case 'text': return 'bg-blue-600 text-white hover:bg-blue-700'
+                      case 'user_feedback': return 'bg-cyan-600 text-white hover:bg-cyan-700'
+                      case 'reasoning': return 'bg-purple-600 text-white hover:bg-purple-700'
+                      case 'api_req_started': return 'bg-slate-600 text-white hover:bg-slate-700'
+                      case 'completion_result': return 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      default: return 'bg-slate-600 text-white hover:bg-slate-700'
+                    }
+                  }
+                  
+                  const typeBadgeClass = getTypeBadgeClass()
+                  const isUserType = msgType === 'user_feedback'
+                  
+                  return (
+                    <div
+                      key={`ui-${uiMsg.ts}-${index}`}
+                      className="rounded-md p-4 border bg-background border-border"
+                    >
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/50">
+                        <div className="flex items-center gap-2">
+                          {isUserType ? (
+                            <span className="font-medium text-sm text-foreground">User</span>
+                          ) : (
+                            <Badge className={`text-xs ${typeBadgeClass}`}>
+                              {msgType}
+                            </Badge>
+                          )}
+                          <Badge className="text-xs bg-teal-600 text-white hover:bg-teal-700">
+                            UI
+                          </Badge>
+                          {uiMsg.partial && (
+                            <Badge className="text-xs bg-amber-600 text-white hover:bg-amber-700">
+                              partial
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTime(uiMsg.ts)}
+                        </span>
+                      </div>
+                      
+                      {uiMsg.text && (
+                        <UIMessageContentBlock
+                          text={uiMsg.text}
+                          expanded={expandAll}
+                          badgeClass={typeBadgeClass}
+                        />
+                      )}
+                    </div>
+                  )
+                } else {
+                  const message = item.message
+                  return (
+                    <div
+                      key={`api-${message.ts}-${index}`}
+                      className={`rounded-md p-4 border ${
+                        message.isSummary
+                          ? 'bg-violet-950/40 border-violet-800/50'
+                          : message.isTruncationMarker
+                            ? 'bg-orange-950/40 border-orange-800/50'
+                            : 'bg-background border-border'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/50">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-medium text-sm ${
+                            message.isSummary
+                              ? 'text-violet-400'
+                              : message.isTruncationMarker
+                                ? 'text-orange-400'
+                                : message.role === 'user' ? 'text-foreground' : 'text-muted-foreground'
+                          }`}>
+                            {message.isSummary
+                              ? '📋 Summary'
+                              : message.isTruncationMarker
+                                ? '✂️ Truncation'
+                                : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                          </span>
+                          <Badge className="text-xs bg-blue-600 text-white hover:bg-blue-700">
+                            API
+                          </Badge>
+                          {message.condenseId && (
+                            <Badge className="text-xs bg-violet-600 text-white hover:bg-violet-700">
+                              condense: {message.condenseId.slice(0, 8)}…
+                            </Badge>
+                          )}
+                          {message.truncationId && (
+                            <Badge className="text-xs bg-orange-600 text-white hover:bg-orange-700">
+                              truncation: {message.truncationId.slice(0, 8)}…
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTime(message.ts)}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {normalizeContent(message.content).map((block, blockIndex) => (
+                          <MessageBlock
+                            key={blockIndex}
+                            block={block}
+                            expanded={expandAll}
+                            hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
+              })
+            ) : (
+              filteredMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`rounded-md p-4 border ${
+                    message.isSummary
+                      ? 'bg-violet-950/40 border-violet-800/50'
+                      : message.isTruncationMarker
+                        ? 'bg-orange-950/40 border-orange-800/50'
+                        : 'bg-background border-border'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/50">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium text-sm ${
+                        message.isSummary
+                          ? 'text-violet-400'
+                          : message.isTruncationMarker
+                            ? 'text-orange-400'
+                            : message.role === 'user' ? 'text-foreground' : 'text-muted-foreground'
+                      }`}>
+                        {message.isSummary
+                          ? '📋 Summary'
+                          : message.isTruncationMarker
+                            ? '✂️ Truncation'
+                            : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                      </span>
+                      {message.condenseId && (
+                        <Badge className="text-xs bg-violet-600 text-white hover:bg-violet-700">
+                          condense: {message.condenseId.slice(0, 8)}…
+                        </Badge>
+                      )}
+                      {message.truncationId && (
+                        <Badge className="text-xs bg-orange-600 text-white hover:bg-orange-700">
+                          truncation: {message.truncationId.slice(0, 8)}…
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatTime(message.ts)}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {normalizeContent(message.content).map((block, blockIndex) => (
+                      <MessageBlock
+                        key={blockIndex}
+                        block={block}
+                        expanded={expandAll}
+                        hasMissingResult={block.type === 'tool_use' && block.id ? toolUsesMissingResults.has(block.id) : false}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
         
         {!isAtBottom && (
-          <button
+          <Button
+            variant="secondary"
+            size="icon"
             onClick={() => scrollToBottom()}
-            className="absolute bottom-4 right-6 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg shadow-lg transition-all duration-200 flex items-center gap-2 border border-slate-600"
-            title="Scroll to bottom"
+            className="absolute bottom-4 right-6 rounded-full shadow-lg"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            <span className="text-sm">Scroll down</span>
-          </button>
+            <ArrowDown className="h-4 w-4" />
+          </Button>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
