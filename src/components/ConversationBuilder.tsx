@@ -266,18 +266,6 @@ interface ConversationBuilderProps {
   onMessagesChange: (messages: (Message & { _id: string })[]) => void
 }
 
-interface APILogEntry {
-  id: string
-  timestamp: Date
-  request: {
-    model: string
-    messages: unknown[]
-    tools?: unknown[]
-  }
-  response: unknown
-  error?: string
-}
-
 export default function ConversationBuilder({ onPreview, messages, onMessagesChange }: ConversationBuilderProps) {
   const [selectedTools, setSelectedTools] = useState<TestTool[]>([])
   const [apiSettings, setApiSettings] = useState<APISettingsType>(() => {
@@ -292,9 +280,6 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
   const [apiResponse, setApiResponse] = useState<string | null>(null)
   const [showToolsPanel, setShowToolsPanel] = useState(false)
   const [isResponseExpanded, setIsResponseExpanded] = useState(false)
-  const [apiLogs, setApiLogs] = useState<APILogEntry[]>([])
-  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set())
-  const [showLogsPanel, setShowLogsPanel] = useState(true)
 
   useEffect(() => {
     localStorage.setItem('convo-builder-api-settings', JSON.stringify(apiSettings))
@@ -493,18 +478,6 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
         }))
       }
 
-      const logId = crypto.randomUUID()
-      const logEntry: APILogEntry = {
-        id: logId,
-        timestamp: new Date(),
-        request: {
-          model: apiSettings.model,
-          messages: cleanMessages,
-          tools: body.tools as unknown[] | undefined
-        },
-        response: null
-      }
-
       const response = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -515,9 +488,6 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
       })
 
       const data = await response.json()
-      logEntry.response = data
-      setApiLogs(prev => [logEntry, ...prev])
-      setExpandedLogIds(prev => new Set([...prev, logId]))
       setApiResponse(JSON.stringify(data, null, 2))
 
       if (data.choices?.[0]?.message) {
@@ -551,18 +521,6 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      const logEntry: APILogEntry = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
-        request: {
-          model: apiSettings.model,
-          messages: [],
-          tools: undefined
-        },
-        response: null,
-        error: errorMsg
-      }
-      setApiLogs(prev => [logEntry, ...prev])
       setApiResponse(`Error: ${errorMsg}`)
     } finally {
       setIsTestingAPI(false)
