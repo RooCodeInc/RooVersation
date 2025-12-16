@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Badge } from '@/components/ui/badge'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import { getBadgeVariant } from '@/lib/block-styles'
 
 interface ContentBlock {
   type: string
@@ -32,7 +40,6 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
     setIsExpanded(initialExpanded)
   }, [initialExpanded])
 
-  // Get a preview string for the collapsed state (from PR)
   function getPreviewText(): string {
     const maxLength = 100
     let text = ''
@@ -54,73 +61,65 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
         text = JSON.stringify(block)
     }
     
-    // Clean up whitespace and truncate
     const cleaned = text.replace(/\s+/g, ' ').trim()
     if (cleaned.length <= maxLength) return cleaned
     return cleaned.slice(0, maxLength) + '…'
   }
 
   function renderBlockHeader() {
-    const typeColors: Record<string, string> = {
-      text: 'bg-green-900/50 text-green-300',
-      reasoning: 'bg-purple-900/50 text-purple-300',
-      tool_use: 'bg-yellow-900/50 text-yellow-300',
-      tool_result: 'bg-blue-900/50 text-blue-300',
-      image: 'bg-pink-900/50 text-pink-300',
-    }
-
-    const bgColor = typeColors[block.type] || 'bg-slate-700 text-slate-300'
-
     return (
-      <div
-        className={`flex items-center gap-2 ${isExpanded ? 'mb-2 cursor-pointer hover:bg-slate-700/50 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t flex-wrap' : ''}`}
-        onClick={isExpanded ? () => setIsExpanded(false) : undefined}
-      >
-        <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${bgColor}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant={getBadgeVariant(block.type)} className="text-xs font-medium shrink-0">
           {block.type}
-        </span>
+        </Badge>
         {block.name && (
-          <span className="text-sm font-mono text-slate-300 shrink-0">{block.name}</span>
+          <span className="text-sm font-mono text-foreground/80 shrink-0">{block.name}</span>
         )}
         {block.id && (
-          <span className="text-xs text-slate-500 font-mono shrink-0">{block.id}</span>
+          <span className="text-xs text-muted-foreground font-mono shrink-0">{block.id}</span>
         )}
         {block.tool_use_id && (
-          <span className="text-xs text-slate-500 font-mono shrink-0">ref: {block.tool_use_id}</span>
+          <span className="text-xs text-muted-foreground font-mono shrink-0">ref: {block.tool_use_id}</span>
         )}
         {block.is_error && (
-          <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-900/50 text-red-300 shrink-0">
+          <Badge variant="destructive" className="text-xs font-medium shrink-0">
             Error
-          </span>
+          </Badge>
         )}
         {hasMissingResult && (
-          <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-900/50 text-orange-300 flex items-center gap-1 shrink-0" title="No tool result received">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
+          <Badge className="text-xs font-medium bg-orange-900/40 text-orange-400 hover:bg-orange-900/50 flex items-center gap-1 shrink-0">
+            <AlertTriangle className="h-3 w-3" />
             Missing Result
-          </span>
+          </Badge>
         )}
         {!isExpanded && (
-          <span className="text-xs text-slate-500 truncate min-w-0 flex-1">
+          <span className="text-xs text-muted-foreground truncate min-w-0 flex-1">
             {getPreviewText()}
           </span>
         )}
-        <span className={`text-xs text-slate-400 shrink-0 ${isExpanded ? 'ml-auto' : ''}`}>
-          {isExpanded ? '▼ Collapse' : '▶ Expand'}
+        <span className="text-xs text-muted-foreground shrink-0 ml-auto flex items-center gap-1">
+          {isExpanded ? (
+            <>
+              <ChevronDown className="h-3 w-3" />
+              Collapse
+            </>
+          ) : (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              Expand
+            </>
+          )}
         </span>
       </div>
     )
   }
 
   function renderContent() {
-    if (!isExpanded) return null
-
     switch (block.type) {
       case 'text':
         return (
-          <div className="message-content">
-            <pre className="text-sm text-slate-200 whitespace-pre-wrap break-words bg-slate-900 p-3 rounded border border-slate-600">
+          <div className="message-content mt-2">
+            <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words bg-background p-3 rounded border border-border">
               {block.text}
             </pre>
           </div>
@@ -128,14 +127,14 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
 
       case 'reasoning':
         return (
-          <div className="message-content">
-            <pre className="text-sm text-purple-200 whitespace-pre-wrap break-words bg-purple-900/30 p-3 rounded border border-purple-800">
+          <div className="message-content mt-2">
+            <pre className="text-sm text-violet-200 whitespace-pre-wrap break-words bg-violet-950/40 p-3 rounded border border-violet-800/50">
               {block.text}
             </pre>
             {block.summary && block.summary.length > 0 && (
-              <div className="mt-2 p-2 bg-purple-900/50 rounded">
-                <div className="text-xs font-semibold text-purple-300 mb-1">Summary:</div>
-                <ul className="list-disc list-inside text-sm text-purple-200">
+              <div className="mt-2 p-2 bg-violet-950/50 rounded border border-violet-800/50">
+                <div className="text-xs font-semibold text-violet-400 mb-1">Summary:</div>
+                <ul className="list-disc list-inside text-sm text-violet-300">
                   {block.summary.map((item, i) => (
                     <li key={i}>{item}</li>
                   ))}
@@ -147,21 +146,21 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
 
       case 'tool_use':
         return (
-          <div className="message-content">
-            <div className="bg-yellow-900/30 p-3 rounded border border-yellow-800">
-              <div className="text-sm font-semibold text-yellow-300 mb-2">
+          <div className="message-content mt-2">
+            <div className="bg-amber-950/40 p-3 rounded border border-amber-800/50">
+              <div className="text-sm font-semibold text-amber-400 mb-2">
                 Tool: {block.name}
               </div>
               {block.input && (
                 <div>
-                  <div className="text-xs text-yellow-400 mb-1">Input:</div>
+                  <div className="text-xs text-amber-400/80 mb-1">Input:</div>
                   <SyntaxHighlighter
                     language="json"
                     style={{
                       ...vscDarkPlus,
                       'pre[class*="language-"]': {
                         ...vscDarkPlus['pre[class*="language-"]'],
-                        background: 'rgb(15 23 42)',
+                        background: 'hsl(var(--background))',
                       },
                       'code[class*="language-"]': {
                         ...vscDarkPlus['code[class*="language-"]'],
@@ -173,7 +172,7 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
                       padding: '0.5rem',
                       borderRadius: '0.25rem',
                       fontSize: '0.75rem',
-                      background: 'rgb(15 23 42)',
+                      background: 'hsl(var(--background))',
                       overflow: 'hidden',
                     }}
                     wrapLongLines
@@ -195,14 +194,14 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
 
       case 'tool_result':
         return (
-          <div className="message-content">
+          <div className="message-content mt-2">
             <div className={`p-3 rounded border ${
-              block.is_error 
-                ? 'bg-red-900/30 border-red-800' 
-                : 'bg-blue-900/30 border-blue-800'
+              block.is_error
+                ? 'bg-destructive/20 border-destructive/50'
+                : 'bg-sky-950/40 border-sky-800/50'
             }`}>
               <pre className={`text-sm whitespace-pre-wrap break-words ${
-                block.is_error ? 'text-red-200' : 'text-slate-200'
+                block.is_error ? 'text-destructive-foreground' : 'text-foreground/90'
               }`}>
                 {block.content}
               </pre>
@@ -212,23 +211,23 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
 
       case 'image':
         return (
-          <div className="message-content">
+          <div className="message-content mt-2">
             {block.source?.data ? (
               <img
                 src={`data:${block.source.media_type};base64,${block.source.data}`}
                 alt="Embedded image"
-                className="max-w-full h-auto rounded border border-slate-600"
+                className="max-w-full h-auto rounded border border-border"
               />
             ) : (
-              <div className="text-slate-400 text-sm">Image data not available</div>
+              <div className="text-muted-foreground text-sm">Image data not available</div>
             )}
           </div>
         )
 
       default:
         return (
-          <div className="message-content">
-            <pre className="text-xs text-slate-300 bg-slate-900 p-3 rounded overflow-x-auto">
+          <div className="message-content mt-2">
+            <pre className="text-xs text-foreground/80 bg-background p-3 rounded overflow-x-auto border border-border">
               {JSON.stringify(block, null, 2)}
             </pre>
           </div>
@@ -237,12 +236,17 @@ export default function MessageBlock({ block, expanded: initialExpanded, hasMiss
   }
 
   return (
-    <div
-      className={`border border-slate-600 rounded p-3 bg-slate-800/50 ${!isExpanded ? 'cursor-pointer hover:bg-slate-700/50' : ''}`}
-      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+    <Collapsible
+      open={isExpanded}
+      onOpenChange={setIsExpanded}
+      className="border border-border rounded p-3 bg-muted"
     >
-      {renderBlockHeader()}
-      {renderContent()}
-    </div>
+      <CollapsibleTrigger className="w-full text-left hover:bg-muted/80 -m-3 p-3 rounded transition-colors">
+        {renderBlockHeader()}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {renderContent()}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

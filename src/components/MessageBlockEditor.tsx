@@ -2,6 +2,26 @@ import { useState, useRef } from 'react'
 import type { ContentBlock, TestTool } from '../types'
 import { generateId } from '../types'
 import { generateSampleToolInput } from '../testTools'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { X, ChevronDown, ChevronRight, Dices, Upload } from 'lucide-react'
+import { getBadgeVariant } from '@/lib/block-styles'
 
 interface MessageBlockEditorProps {
   block: ContentBlock
@@ -13,16 +33,6 @@ interface MessageBlockEditorProps {
 export default function MessageBlockEditor({ block, onUpdate, onDelete, selectedTools }: MessageBlockEditorProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const typeColors: Record<string, string> = {
-    text: 'bg-green-900/50 border-green-700',
-    reasoning: 'bg-purple-900/50 border-purple-700',
-    tool_use: 'bg-yellow-900/50 border-yellow-700',
-    tool_result: 'bg-blue-900/50 border-blue-700',
-    image: 'bg-pink-900/50 border-pink-700',
-  }
-
-  const bgColor = typeColors[block.type] || 'bg-slate-700 border-slate-600'
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -47,29 +57,29 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
     switch (block.type) {
       case 'text':
         return (
-          <textarea
+          <Textarea
             value={block.text || ''}
             onChange={(e) => onUpdate({ ...block, text: e.target.value })}
-            className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 min-h-[80px] resize-y"
+            className="min-h-[80px] resize-y text-sm bg-background"
             placeholder="Enter text content..."
           />
         )
 
       case 'reasoning':
         return (
-          <div className="space-y-2">
-            <textarea
+          <div className="space-y-3">
+            <Textarea
               value={block.text || ''}
               onChange={(e) => onUpdate({ ...block, text: e.target.value })}
-              className="w-full bg-purple-900/30 border border-purple-700 rounded p-2 text-sm text-purple-200 min-h-[80px] resize-y"
+              className="min-h-[80px] resize-y text-sm bg-violet-950/40 border-violet-800/50"
               placeholder="Enter reasoning content..."
             />
             <div>
-              <label className="block text-xs text-purple-300 mb-1">Summary (one per line)</label>
-              <textarea
+              <Label className="text-xs text-foreground">Summary (one per line)</Label>
+              <Textarea
                 value={(block.summary || []).join('\n')}
                 onChange={(e) => onUpdate({ ...block, summary: e.target.value.split('\n').filter(Boolean) })}
-                className="w-full bg-purple-900/30 border border-purple-700 rounded p-2 text-sm text-purple-200 min-h-[60px] resize-y"
+                className="min-h-[60px] resize-y text-sm bg-violet-950/40 border-violet-800/50 mt-1"
                 placeholder="Summary points..."
               />
             </div>
@@ -78,54 +88,60 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
 
       case 'tool_use':
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex gap-2">
               <div className="flex-1">
-                <label className="block text-xs text-yellow-300 mb-1">Tool Name</label>
-                <select
+                <Label className="text-xs text-foreground">Tool Name</Label>
+                <Select
                   value={block.name || ''}
-                  onChange={(e) => {
-                    const tool = selectedTools.find(t => t.name === e.target.value)
+                  onValueChange={(value) => {
+                    const tool = selectedTools.find(t => t.name === value)
                     onUpdate({
                       ...block,
-                      name: e.target.value,
+                      name: value,
                       input: tool ? generateSampleToolInput(tool) : {}
                     })
                   }}
-                  className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200"
                 >
-                  <option value="">Select a tool...</option>
-                  {selectedTools.map(tool => (
-                    <option key={tool.name} value={tool.name}>{tool.name}</option>
-                  ))}
-                  {block.name && !selectedTools.find(t => t.name === block.name) && (
-                    <option value={block.name}>{block.name} (custom)</option>
-                  )}
-                </select>
+                  <SelectTrigger className="h-8 mt-1">
+                    <SelectValue placeholder="Select a tool..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedTools.map(tool => (
+                      <SelectItem key={tool.name} value={tool.name}>
+                        {tool.name}
+                      </SelectItem>
+                    ))}
+                    {block.name && !selectedTools.find(t => t.name === block.name) && (
+                      <SelectItem value={block.name}>{block.name} (custom)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="w-48">
-                <label className="block text-xs text-yellow-300 mb-1">ID</label>
-                <div className="flex gap-1">
-                  <input
-                    type="text"
+                <Label className="text-xs text-foreground">ID</Label>
+                <div className="flex gap-1 mt-1">
+                  <Input
                     value={block.id || ''}
                     onChange={(e) => onUpdate({ ...block, id: e.target.value })}
-                    className="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-400 font-mono"
+                    className="flex-1 h-8 text-xs font-mono bg-background"
                     placeholder="toolu_..."
                   />
-                  <button
+                  <Button
+                    variant="outline"
+                    size="icon"
                     onClick={() => onUpdate({ ...block, id: generateId() })}
-                    className="px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300"
+                    className="h-8 w-8"
                     title="Generate new ID"
                   >
-                    🎲
-                  </button>
+                    <Dices className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
             </div>
             <div>
-              <label className="block text-xs text-yellow-300 mb-1">Input (JSON)</label>
-              <textarea
+              <Label className="text-xs text-foreground">Input (JSON)</Label>
+              <Textarea
                 value={JSON.stringify(block.input || {}, null, 2)}
                 onChange={(e) => {
                   try {
@@ -135,7 +151,7 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
                     // Keep the text but don't update if invalid JSON
                   }
                 }}
-                className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-slate-200 font-mono min-h-[100px] resize-y"
+                className="min-h-[100px] resize-y text-xs font-mono mt-1 bg-background"
                 placeholder="{}"
               />
             </div>
@@ -144,37 +160,37 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
 
       case 'tool_result':
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <label className="block text-xs text-blue-300 mb-1">Tool Use ID (reference)</label>
-                <input
-                  type="text"
+                <Label className="text-xs text-foreground">Tool Use ID (reference)</Label>
+                <Input
                   value={block.tool_use_id || ''}
                   onChange={(e) => onUpdate({ ...block, tool_use_id: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200 font-mono"
+                  className="h-8 text-sm font-mono mt-1 bg-background"
                   placeholder="toolu_..."
                 />
               </div>
-              <label className="flex items-center gap-2 pb-1">
-                <input
-                  type="checkbox"
+              <div className="flex items-center gap-2 pb-1">
+                <Checkbox
+                  id={`error-${block.tool_use_id}`}
                   checked={block.is_error || false}
-                  onChange={(e) => onUpdate({ ...block, is_error: e.target.checked })}
-                  className="rounded border-slate-500"
+                  onCheckedChange={(checked) => onUpdate({ ...block, is_error: checked === true })}
                 />
-                <span className="text-xs text-red-300">Error</span>
-              </label>
+                <Label htmlFor={`error-${block.tool_use_id}`} className="text-xs text-destructive cursor-pointer">
+                  Error
+                </Label>
+              </div>
             </div>
             <div>
-              <label className="block text-xs text-blue-300 mb-1">Content</label>
-              <textarea
+              <Label className="text-xs text-foreground">Content</Label>
+              <Textarea
                 value={block.content || ''}
                 onChange={(e) => onUpdate({ ...block, content: e.target.value })}
-                className={`w-full border rounded p-2 text-sm min-h-[80px] resize-y ${
+                className={`min-h-[80px] resize-y text-sm mt-1 ${
                   block.is_error
-                    ? 'bg-red-900/30 border-red-700 text-red-200'
-                    : 'bg-slate-900 border-slate-600 text-slate-200'
+                    ? 'bg-destructive/20 border-destructive/50 text-destructive-foreground'
+                    : 'bg-background'
                 }`}
                 placeholder="Tool result content..."
               />
@@ -184,7 +200,7 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
 
       case 'image':
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex gap-2 items-center">
               <input
                 ref={fileInputRef}
@@ -193,13 +209,15 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
                 onChange={handleImageUpload}
                 className="hidden"
               />
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 rounded"
               >
+                <Upload className="h-4 w-4 mr-1" />
                 Upload Image
-              </button>
-              <span className="text-xs text-slate-400">
+              </Button>
+              <span className="text-xs text-muted-foreground">
                 {block.source?.media_type || 'No image selected'}
               </span>
             </div>
@@ -209,35 +227,33 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
                 <img
                   src={`data:${block.source.media_type};base64,${block.source.data}`}
                   alt="Preview"
-                  className="max-w-full max-h-48 rounded border border-slate-600"
+                  className="max-w-full max-h-48 rounded border border-border"
                 />
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-muted-foreground">
                   Base64 data: {block.source.data.length} characters
                 </div>
               </div>
             )}
             
             <div>
-              <label className="block text-xs text-pink-300 mb-1">Or paste Base64 data directly</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
+              <Label className="text-xs text-foreground">Or paste Base64 data directly</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
                   value={block.source?.media_type || ''}
                   onChange={(e) => onUpdate({
                     ...block,
                     source: { ...block.source, type: 'base64', media_type: e.target.value }
                   })}
-                  className="w-32 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200"
+                  className="w-32 h-8 text-xs bg-background"
                   placeholder="image/png"
                 />
-                <input
-                  type="text"
+                <Input
                   value={block.source?.data || ''}
                   onChange={(e) => onUpdate({
                     ...block,
                     source: { ...block.source, type: 'base64', data: e.target.value }
                   })}
-                  className="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+                  className="flex-1 h-8 text-xs font-mono bg-background"
                   placeholder="Base64 encoded image data..."
                 />
               </div>
@@ -248,8 +264,8 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
       default:
         return (
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Raw JSON</label>
-            <textarea
+            <Label className="text-xs">Raw JSON</Label>
+            <Textarea
               value={JSON.stringify(block, null, 2)}
               onChange={(e) => {
                 try {
@@ -259,7 +275,7 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
                   // Keep the text but don't update if invalid JSON
                 }
               }}
-              className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-slate-200 font-mono min-h-[100px] resize-y"
+              className="min-h-[100px] resize-y text-xs font-mono mt-1 bg-background"
             />
           </div>
         )
@@ -267,23 +283,19 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
   }
 
   return (
-    <div className={`border rounded p-3 ${bgColor}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-          block.type === 'text' ? 'bg-green-800 text-green-200' :
-          block.type === 'reasoning' ? 'bg-purple-800 text-purple-200' :
-          block.type === 'tool_use' ? 'bg-yellow-800 text-yellow-200' :
-          block.type === 'tool_result' ? 'bg-blue-800 text-blue-200' :
-          block.type === 'image' ? 'bg-pink-800 text-pink-200' :
-          'bg-slate-700 text-slate-200'
-        }`}>
+    <Collapsible
+      open={isExpanded}
+      onOpenChange={setIsExpanded}
+      className="border border-border rounded p-3 bg-muted"
+    >
+      <div className="flex items-center gap-2">
+        <Badge variant={getBadgeVariant(block.type)} className="text-xs font-medium">
           {block.type}
-        </span>
+        </Badge>
         
-        <select
+        <Select
           value={block.type}
-          onChange={(e) => {
-            const newType = e.target.value
+          onValueChange={(newType) => {
             const newBlock: ContentBlock = { type: newType }
             
             if (newType === 'text') {
@@ -309,36 +321,45 @@ export default function MessageBlockEditor({ block, onUpdate, onDelete, selected
             
             onUpdate(newBlock)
           }}
-          className="bg-slate-800 text-xs text-slate-300 rounded px-1 py-0.5 border border-slate-600"
         >
-          <option value="text">text</option>
-          <option value="tool_use">tool_use</option>
-          <option value="tool_result">tool_result</option>
-          <option value="reasoning">reasoning</option>
-          <option value="image">image</option>
-        </select>
+          <SelectTrigger className="h-6 w-auto text-xs bg-background/50 border-border/50">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text">text</SelectItem>
+            <SelectItem value="tool_use">tool_use</SelectItem>
+            <SelectItem value="tool_result">tool_result</SelectItem>
+            <SelectItem value="reasoning">reasoning</SelectItem>
+            <SelectItem value="image">image</SelectItem>
+          </SelectContent>
+        </Select>
         
         <div className="flex-1" />
         
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1 hover:bg-slate-600/50 rounded text-slate-400 text-xs"
-        >
-          {isExpanded ? '▼' : '▶'}
-        </button>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-6 w-6">
+            {isExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </Button>
+        </CollapsibleTrigger>
         
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onDelete}
-          className="p-1 hover:bg-red-900/50 rounded text-red-400"
+          className="h-6 w-6 text-destructive hover:text-destructive"
           title="Delete block"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
+          <X className="h-3 w-3" />
+        </Button>
       </div>
       
-      {isExpanded && renderEditor()}
-    </div>
+      <CollapsibleContent className="mt-3">
+        {renderEditor()}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
