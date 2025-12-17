@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { X, Copy, ChevronDown, ChevronRight, ArrowDown } from 'lucide-react'
+import { X, Copy, ChevronDown, ChevronRight, ArrowDown, ClipboardList, Scissors, User, Bot } from 'lucide-react'
 import MessageBlock from './MessageBlock'
 import type { UIMessage } from '../types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -460,10 +460,10 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
                                 : message.role === 'user' ? 'text-foreground' : 'text-muted-foreground'
                           }`}>
                             {message.isSummary
-                              ? '📋 Summary'
+                              ? <><ClipboardList className="h-4 w-4 inline mr-1" />Summary</>
                               : message.isTruncationMarker
-                                ? '✂️ Truncation'
-                                : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                                ? <><Scissors className="h-4 w-4 inline mr-1" />Truncation</>
+                                : message.role === 'user' ? <><User className="h-4 w-4 inline mr-1" />User</> : <><Bot className="h-4 w-4 inline mr-1" />Assistant</>}
                           </span>
                           <Badge className="text-xs bg-blue-600 text-white hover:bg-blue-700">
                             API
@@ -520,10 +520,10 @@ export default function ConversationView({ messages, uiMessages, taskId, onClose
                             : message.role === 'user' ? 'text-foreground' : 'text-muted-foreground'
                       }`}>
                         {message.isSummary
-                          ? '📋 Summary'
+                          ? <><ClipboardList className="h-4 w-4 inline mr-1" />Summary</>
                           : message.isTruncationMarker
-                            ? '✂️ Truncation'
-                            : message.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                            ? <><Scissors className="h-4 w-4 inline mr-1" />Truncation</>
+                            : message.role === 'user' ? <><User className="h-4 w-4 inline mr-1" />User</> : <><Bot className="h-4 w-4 inline mr-1" />Assistant</>}
                       </span>
                       {message.condenseId && (
                         <Badge className="text-xs bg-violet-600 text-white hover:bg-violet-700">
