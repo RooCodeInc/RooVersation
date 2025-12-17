@@ -50,7 +50,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { GripVertical, Copy, Trash2, ChevronDown, ChevronRight, Wrench, Send, Upload, Download, Eye, Sparkles } from 'lucide-react'
+import { GripVertical, Copy, Trash2, ChevronDown, ChevronRight, Wrench, Send, Upload, Download, Eye, Sparkles, User, Bot, FlaskConical } from 'lucide-react'
 
 interface DraggableMessageProps {
   message: Message & { _id: string }
@@ -142,8 +142,8 @@ function DraggableMessage({ message, index, onUpdate, onDelete, onDuplicate, sel
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="user">👤 User</SelectItem>
-              <SelectItem value="assistant">🤖 Assistant</SelectItem>
+              <SelectItem value="user"><User className="h-4 w-4 inline mr-1" />User</SelectItem>
+              <SelectItem value="assistant"><Bot className="h-4 w-4 inline mr-1" />Assistant</SelectItem>
             </SelectContent>
           </Select>
           
@@ -739,7 +739,7 @@ export default function ConversationBuilder({ onPreview, messages, onMessagesCha
 
         <Card className="flex-1 flex flex-col min-h-0 bg-background">
           <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm">🧪 API Testing</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><FlaskConical className="h-4 w-4" />API Testing</CardTitle>
           </CardHeader>
           <CardContent className="p-3 space-y-3 flex-1 flex flex-col min-h-0">
             <div>
